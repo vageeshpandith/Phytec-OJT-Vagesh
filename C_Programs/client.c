@@ -1,68 +1,67 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <arpa/inet.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <unistd.h>
 
-#define PORT 8080
-#define BUFFER_SIZE 1024
+#define SHM_KEY 1234
+#define SHM_SIZE 1024
 
-int main() {
-    int client_socket;
-    struct sockaddr_in server_address;
+struct shared
+{
+    char msg[256];
+};
 
-    // Create a socket
-    if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        perror("Socket creation failed");
+int main() 
+{
+    int sid;
+    struct shared*mem;
+
+    
+    if ((sid = shmget(SHM_KEY, SHM_SIZE, 0666)) == -1) 
+    {
+        perror("shmget");
         exit(EXIT_FAILURE);
     }
 
-    // Configure server address
-    server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = inet_addr("127.0.0.1");
-    server_address.sin_port = htons(PORT);
-
-    // Connect to the server
-    if (connect(client_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == -1) {
-        perror("Connection failed");
+    
+    if ((mem = shmat(sid, NULL, 0)) == (void *)-1) 
+    {
+        perror("shmat");
         exit(EXIT_FAILURE);
     }
 
-    // Provide username and password for authentication
-    char username[50] = "user1";
-    char password[50] = "pass1";
-    send(client_socket, username, sizeof(username), 0);
-    send(client_socket, password, sizeof(password), 0);
+    
+    strncpy(mem->msg, "Hello from the client!", sizeof(mem->msg) - 1);
+    mem->msg[sizeof(mem->msg) - 1] = '\0';
 
-    // Receive authentication response from the server
-    char auth_response[50];
-    recv(client_socket, auth_response, sizeof(auth_response), 0);
-    printf("Authentication Response: %s\n", auth_response);
-
-    if (strcmp(auth_response, "Authentication successful") == 0) {
-        // Receive file list from the server
-        printf("Available Files:\n");
-        char file_name[50];
-        while (1) {
-            recv(client_socket, file_name, sizeof(file_name), 0);
-            if (strlen(file_name) == 0) {
-                break;
-            }
-            printf("- %s\n", file_name);
-        }
-
-        // Select a file to download
-        char selected_file[50] = "file1.txt";
-        send(client_socket, selected_file, sizeof(selected_file), 0);
-
-        // Receive file content from the server
-        char file_content[BUFFER_SIZE];
-        recv(client_socket, file_content, sizeof(file_content), 0);
-        printf("\nFile Content:\n%s\n", file_content);
+    
+    if (shmdt(mem) == -1) 
+    {
+        perror("shmdt");
+        exit(EXIT_FAILURE);
     }
 
-    // Close the client socket
-    close(client_socket);
+    
+    sleep(2);
+
+   
+    if ((mem = shmat(sid, NULL, 0)) == (void *)-1) 
+    {
+        perror("shmat");
+        exit(EXIT_FAILURE);
+    }
+
+   
+    printf("Client: Response from server: %s\n", mem->msg);
+
+  
+    if (shmdt(mem) == -1) 
+    {
+        perror("shmdt");
+        exit(EXIT_FAILURE);
+    }
 
     return 0;
 }
